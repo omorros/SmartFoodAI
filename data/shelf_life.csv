@@ -1,0 +1,11 @@
+name,category,location,days
+milk,Dairy,Fridge,7
+yogurt,Dairy,Fridge,10
+cheese,Dairy,Fridge,14
+apple,Fruit,Fridge,21
+banana,Fruit,Pantry,5
+lettuce,Vegetable,Fridge,7
+bread,Bakery,Pantry,4
+eggs,Dairy,Fridge,21
+tomato,Vegetable,Fridge,7
+carrot,Vegetable,Fridge,21

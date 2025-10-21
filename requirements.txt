@@ -1,0 +1,8 @@
+numpy
+pandas
+opencv-python
+pillow
+python-dateutil
+rich
+
+pip install -r requirements.txt
