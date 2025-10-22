@@ -1,46 +1,71 @@
-import os, csv, datetime as dt
-from functools import lru_cache
+import csv, os, datetime as dt
+from typing import Optional
 
-# path to data/shelf_life.csv (go up one folder from /src to project root)
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
-SHELF_LIFE_CSV = os.path.join(DATA_DIR, "shelf_life.csv")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "shelf_life.csv")
 
-@lru_cache(maxsize=1)
-def _load_shelf_life():
-    """Load shelf_life.csv -> list of dicts"""
-    rows = []
-    if not os.path.exists(SHELF_LIFE_CSV):
-        return rows
-    with open(SHELF_LIFE_CSV, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            # normalize
-            row = {k: (v.strip() if isinstance(v, str) else v) for k,v in row.items()}
-            row["name_lc"] = row["name"].lower()
-            row["location"] = row.get("location", "Fridge")
-            row["days"] = int(row["days"])
-            rows.append(row)
-    return rows
+# cache mapping: name_lower -> days (int)
+_SHELF = None
 
-def shelf_life_days(name: str, location: str = "Fridge") -> int | None:
-    """Get default shelf-life (days) for a given item name + location."""
-    name_lc = (name or "").strip().lower()
-    loc = (location or "Fridge").strip().title()
-    best = None
-    for row in _load_shelf_life():
-        if row["name_lc"] == name_lc and row["location"].title() == loc:
-            best = row["days"]; break
-    return best  # None if not found
-
-def estimated_expiry(purchased_on: str, days: int) -> str:
-    """YYYY-MM-DD + days -> new YYYY-MM-DD."""
-    p = dt.date.fromisoformat(purchased_on)
-    return (p + dt.timedelta(days=days)).isoformat()
-
-def days_left(expiry_on: str) -> int | None:
-    """Return days remaining until expiry. None if no date."""
-    if not expiry_on: return None
+def _load_shelf():
+    global _SHELF
+    if _SHELF is not None:
+        return _SHELF
+    _SHELF = {}
     try:
-        e = dt.date.fromisoformat(expiry_on)
+        with open(DATA_PATH, newline='', encoding='utf-8') as f:
+            rdr = csv.DictReader(f)
+            for r in rdr:
+                name = (r.get("name") or "").strip().lower()
+                days = r.get("days")
+                try:
+                    days = int(days) if days not in (None, "") else None
+                except ValueError:
+                    days = None
+                if name and days is not None and name not in _SHELF:
+                    # store by name only, ignore location
+                    _SHELF[name] = days
+    except FileNotFoundError:
+        _SHELF = {}
+    return _SHELF
+
+def shelf_life_days(name: str, location: Optional[str] = None) -> Optional[int]:
+    """
+    Return shelf-life days for `name`, ignoring `location`.
+    Tries exact case-insensitive match, then substring match.
+    """
+    if not name:
+        return None
+    shelf = _load_shelf()
+    key = name.strip().lower()
+    # exact match
+    if key in shelf:
+        return shelf[key]
+    # substring match (e.g., "green apple" -> "apple")
+    for k, days in shelf.items():
+        if k in key or key in k:
+            return days
+    return None
+
+def estimated_expiry(purchased_iso: str, days: int) -> str:
+    """
+    Return expiry date (ISO) by adding `days` to purchased_iso.
+    purchased_iso may be an ISO date or None -> today.
+    """
+    if not purchased_iso:
+        purchased = dt.date.today()
+    else:
+        purchased = dt.date.fromisoformat(purchased_iso)
+    return (purchased + dt.timedelta(days=days)).isoformat()
+
+def days_left(expiry_iso: Optional[str]) -> Optional[int]:
+    """
+    Return number of days until expiry (int). If expiry_iso is None or invalid -> None.
+    If expired, returns negative or zero accordingly.
+    """
+    if not expiry_iso:
+        return None
+    try:
+        exp = dt.date.fromisoformat(expiry_iso)
     except Exception:
         return None
-    return (e - dt.date.today()).days
+    return (exp - dt.date.today()).days

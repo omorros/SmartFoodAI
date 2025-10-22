@@ -31,11 +31,15 @@ def add_item(name, category=None, qty=1, unit="", location="Fridge",
              purchased_on=None, expiry_on=None, source=None, notes=None):
     con = get_con()
     purchased_on = purchased_on or dt.date.today().isoformat()
-    con.execute("""INSERT INTO items(name, category, qty, unit, location, purchased_on, expiry_on, source, notes)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (name, category, qty, unit, location, purchased_on, expiry_on, source, notes))
+    cur = con.execute(
+        """INSERT INTO items(name, category, qty, unit, location, purchased_on, expiry_on, source, notes)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (name, category, qty, unit, location, purchased_on, expiry_on, source, notes)
+    )
     con.commit()
+    iid = cur.lastrowid      
     con.close()
+    return iid               
 
 def list_items():
     con = get_con()

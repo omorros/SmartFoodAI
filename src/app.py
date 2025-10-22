@@ -1,4 +1,4 @@
-from db_manager import init_db, add_item, list_items
+from db_manager import init_db, add_item, list_items, DB_PATH
 import datetime as dt
 from utils import shelf_life_days, estimated_expiry, days_left
 
@@ -20,7 +20,6 @@ def cmd_add_item():
     purchased = input("Purchased on (YYYY-MM-DD) [today]: ").strip() or dt.date.today().isoformat()
     expiry = input("Expiry on (YYYY-MM-DD) [blank to auto]: ").strip() or None
 
-    # If user left expiry blank: try to estimate from shelf_life.csv
     if not expiry:
         days = shelf_life_days(name, location)
         if days is not None:
@@ -29,7 +28,14 @@ def cmd_add_item():
             if yn in ("", "y", "yes"):
                 expiry = guess
         else:
-            print("No shelf life rule found for this item. Saving without expiry.")
+            print("No shelf-life rule found for this item. Saving without expiry.")
+
+    try:
+        iid = add_item(name, category, qty, unit, location, purchased, expiry, source="manual", notes=None)
+        print(f"✔ Saved (id {iid}).")
+    except Exception as e:
+        print("Error saving item:", e)
+
 
 
 
@@ -57,6 +63,7 @@ def cmd_list_by_urgency():
 
 def main():
     init_db()
+    print(f"Using database: {DB_PATH}")
     while True:
         menu()
         choice = input("Choose: ").strip()
@@ -65,6 +72,7 @@ def main():
         elif choice == "3": cmd_list_by_urgency()
         elif choice == "0": break
         else: print("Invalid option.")
+
 
 if __name__ == "__main__":
     main()
