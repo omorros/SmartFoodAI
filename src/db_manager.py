@@ -1,4 +1,8 @@
-import sqlite3, os, datetime as dt
+from typing import Optional
+import sqlite3
+import os
+import datetime as dt
+
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "smartfood.db")
 
 SCHEMA = """
@@ -76,3 +80,23 @@ def delete_item(item_id):
     affected = cur.rowcount
     con.close()
     return affected > 0
+
+def consume_item(item_id: int, amount: float) -> tuple[bool, Optional[float]]:
+    """
+    Reduce item quantity by amount. Returns (success, new_qty).
+    If new qty <= 0, item is kept but qty=0 is stored.
+    """
+    con = get_con()
+    try:
+        # Get current qty
+        row = con.execute("SELECT qty FROM items WHERE id = ?", (item_id,)).fetchone()
+        if not row:
+            return False, None
+        current = row[0] or 0
+        new_qty = max(0, current - amount)  # don't allow negative
+        # Update
+        con.execute("UPDATE items SET qty = ? WHERE id = ?", (new_qty, item_id))
+        con.commit()
+        return True, new_qty
+    finally:
+        con.close()

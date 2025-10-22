@@ -1,4 +1,4 @@
-from db_manager import init_db, add_item, list_items, DB_PATH, get_item, update_item, delete_item
+from db_manager import init_db, add_item, list_items, DB_PATH, get_item, update_item, delete_item, consume_item
 import datetime as dt
 from utils import shelf_life_days, estimated_expiry, days_left, parse_date_input
 
@@ -35,6 +35,7 @@ def menu():
     print("[3] View items by urgency")
     print("[4] Edit item")
     print("[5] Delete item")
+    print("[6] Consume item")  # New option
     print("[0] Exit")
 
 
@@ -197,6 +198,51 @@ def cmd_delete_item():
     except Exception as e:
         print("Error deleting item:", e)
 
+def cmd_consume_item():
+    _show_items_brief()
+    s = input("Enter item ID to consume (or Enter to cancel): ").strip()
+    if s == "" or s.lower() == "q":
+        print("Cancelled.")
+        return
+    try:
+        iid = int(s)
+    except ValueError:
+        print("Invalid id.")
+        return
+    
+    row = get_item(iid)
+    if not row:
+        print("Item not found.")
+        return
+    
+    # Show current details
+    _, name, _, qty, unit, _, _, _, _, _ = row
+    print(f"\nCurrent: {name} - {qty} {unit}")
+    
+    # Get amount to consume
+    try:
+        amount = float(input(f"Amount to consume [all={qty}]: ").strip() or qty)
+    except ValueError:
+        print("Invalid amount.")
+        return
+    
+    # Consume
+    ok, new_qty = consume_item(iid, amount)
+    if not ok:
+        print("Error updating item.")
+        return
+    
+    print(f"✔ Updated: {new_qty} {unit} remaining")
+    
+    # If empty, offer to delete
+    if new_qty <= 0:
+        yn = input("Item is empty. Delete it? [y/N] ").strip().lower()
+        if yn in ("y", "yes"):
+            if delete_item(iid):
+                print("✔ Item deleted.")
+            else:
+                print("Error deleting item.")
+
 def main():
     init_db()
     print(f"Using database: {DB_PATH}")
@@ -207,8 +253,8 @@ def main():
         elif choice == "2": cmd_list_items()
         elif choice == "3": cmd_list_by_urgency()
         elif choice == "4": cmd_edit_item()
-
-        elif choice == "5": cmd_delete_item()       
+        elif choice == "5": cmd_delete_item()
+        elif choice == "6": cmd_consume_item()  # New handler
         elif choice == "0": break
         else: print("Invalid option.")
 
