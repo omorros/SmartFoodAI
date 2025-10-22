@@ -9,11 +9,33 @@ try:
 except Exception:
     colorama = None
 
+import re
+
 RED = "\033[31m"
 YELLOW = "\033[33m"
 GREEN = "\033[32m"
 DIM = "\033[2m"
 RESET = "\033[0m"
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+def strip_ansi(s: str) -> str:
+    """Return string without ANSI sequences."""
+    return ANSI_RE.sub("", s)
+
+def pad_visible(s: str, width: int, align: str = "left") -> str:
+    """
+    Pad a string to 'width' based on its visible length (ignores ANSI codes).
+    If the visible content is longer than width, it's truncated (ANSI removed).
+    """
+    visible = strip_ansi(s)
+    if len(visible) > width:
+        # When too long, return truncated visible text (drop colors to avoid broken escapes)
+        return visible[:width]
+    pad = width - len(visible)
+    if align == "right":
+        return (" " * pad) + s
+    return s + (" " * pad)
 
 def _color_days(d):
     """Return a colored string for days-left (d can be int or None)."""
@@ -67,13 +89,25 @@ def cmd_add_item():
 
 def cmd_list_items():
     rows = list_items()
-    print("\nID | Days      | Item           | Qty | Unit | Category | Loc    | Purchased   | Expiry")
-    print("-"*100)
+    # Column widths
+    W_ID = 2
+    W_DAYS = 9
+    W_NAME = 15
+    W_QTY = 6
+    W_UNIT = 4
+    W_CAT = 12
+    W_LOC = 7
+    W_PUR = 10
+    W_EXP = 10
+
+    # Header
+    print("\n" + f"{'ID':>{W_ID}} | {'Days':<{W_DAYS}} | {'Item':<{W_NAME}} | {'Qty':>{W_QTY}} | {'Unit':<{W_UNIT}} | {'Category':<{W_CAT}} | {'Loc':<{W_LOC}} | {'Purchased':<{W_PUR}} | {'Expiry':<{W_EXP}}")
+    print("-" * (W_ID + W_DAYS + W_NAME + W_QTY + W_UNIT + W_CAT + W_LOC + W_PUR + W_EXP + 24))
     for (iid,name,qty,unit,cat,loc,pur,exp) in rows:
         dleft = days_left(exp)
         dtxt = _color_days(dleft)
-        # colored dtxt may affect alignment in some terminals
-        print(f"{iid:<3}| {dtxt:>9} | {name[:14]:<14}| {qty:<4}| {unit:<4}| {cat or '-':<9}| {loc[:6]:<6}| {pur or '-':<11}| {exp or '-'}")
+        dtxt_f = pad_visible(dtxt, W_DAYS, align="left")
+        print(f"{iid:>{W_ID}d} | {dtxt_f} | {name[:W_NAME]:<{W_NAME}} | {qty:>{W_QTY}.1f} | {unit:<{W_UNIT}} | {(cat or '-').title():<{W_CAT}} | {loc:<{W_LOC}} | {pur or '-':<{W_PUR}} | {exp or '-':<{W_EXP}}")
 
 def cmd_list_by_urgency():
     rows = list_items()
@@ -81,16 +115,24 @@ def cmd_list_by_urgency():
     for (iid,name,qty,unit,cat,loc,pur,exp) in rows:
         dleft = days_left(exp)
         annotated.append((dleft, iid, name, qty, unit, cat, loc, pur, exp))
-    # Sort: items with a known date first (lowest days_left), then those without a date
     annotated.sort(key=lambda x: (x[0] is None, x[0] if x[0] is not None else 99999))
 
-    print("\nID | Days      | Item           | Qty | Unit | Category | Loc    | Expiry")
-    print("-"*100)
+    # Column widths (match list view)
+    W_ID = 2
+    W_DAYS = 9
+    W_NAME = 15
+    W_QTY = 6
+    W_UNIT = 4
+    W_CAT = 12
+    W_LOC = 7
+    W_EXP = 10
+
+    print("\n" + f"{'ID':>{W_ID}} | {'Days':<{W_DAYS}} | {'Item':<{W_NAME}} | {'Qty':>{W_QTY}} | {'Unit':<{W_UNIT}} | {'Category':<{W_CAT}} | {'Loc':<{W_LOC}} | {'Expiry':<{W_EXP}}")
+    print("-" * (W_ID + W_DAYS + W_NAME + W_QTY + W_UNIT + W_CAT + W_LOC + W_EXP + 20))
     for (dleft, iid, name, qty, unit, cat, loc, pur, exp) in annotated:
         dtxt = _color_days(dleft)
-        # note: colored strings include ANSI codes which don't count toward visible width,
-        # alignment may be approximate in some terminals.
-        print(f"{iid:<3}| {dtxt:>9} | {name[:14]:<14}| {qty:<4}| {unit:<4}| {cat or '-':<9}| {loc[:6]:<6}| {exp or '-'}")
+        dtxt_f = pad_visible(dtxt, W_DAYS, align="left")
+        print(f"{iid:>{W_ID}d} | {dtxt_f} | {name[:W_NAME]:<{W_NAME}} | {qty:>{W_QTY}.1f} | {unit:<{W_UNIT}} | {(cat or '-').title():<{W_CAT}} | {loc:<{W_LOC}} | {exp or '-':<{W_EXP}}")
 
 def _show_items_brief():
     """Show a compact list to help the user pick an ID."""
@@ -98,12 +140,28 @@ def _show_items_brief():
     if not rows:
         print("\nNo items in database.\n")
         return
-    print("\nID | Days      | Item                 | Expiry")
-    print("-"*70)
+
+    # Calculate max widths but cap them for a neat display
+    max_name = max((len(name) for _,name,*_ in rows), default=4)
+    max_name = max(10, min(max_name, 20))  # between 10 and 20 chars
+
+    # Column widths
+    W_ID = 2
+    W_DAYS = 9
+    W_NAME = max_name
+    W_QTY = 6
+    W_UNIT = 4
+    W_EXP = 10
+
+    # Header
+    print("\n" + f"{'ID':>{W_ID}}  | {'Days':<{W_DAYS}} | {'Item':<{W_NAME}} | {'Qty':>{W_QTY}} | {'Unit':<{W_UNIT}} | {'Expiry':<{W_EXP}}")
+    print("-" * (W_ID + W_DAYS + W_NAME + W_QTY + W_UNIT + W_EXP + 18))
+
     for (iid,name,qty,unit,cat,loc,pur,exp) in rows:
         dleft = days_left(exp)
         dtxt = _color_days(dleft)
-        print(f"{iid:<3}| {dtxt:>9} | {name[:20]:<20}| {exp or '-'}")
+        dtxt_f = pad_visible(dtxt, W_DAYS, align="left")
+        print(f"{iid:>{W_ID}}  | {dtxt_f} | {name[:W_NAME]:<{W_NAME}} | {qty:>{W_QTY}.1f} | {unit:<{W_UNIT}} | {exp or '-':<{W_EXP}}")
     print()
 
 def cmd_edit_item():
