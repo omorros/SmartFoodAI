@@ -1,5 +1,15 @@
-import csv, os, datetime as dt
+import csv
+import os
+import re
+import datetime as dt
 from typing import Optional
+
+# try to use rapidfuzz for fuzzy name matching (optional)
+try:
+    from rapidfuzz import process, fuzz
+    _RAPID_AVAILABLE = True
+except Exception:
+    _RAPID_AVAILABLE = False
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "shelf_life.csv")
 
@@ -21,8 +31,7 @@ def _load_shelf():
                     days = int(days) if days not in (None, "") else None
                 except ValueError:
                     days = None
-                if name and days is not None and name not in _SHELF:
-                    # store by name only, ignore location
+                if name and days is not None:
                     _SHELF[name] = days
     except FileNotFoundError:
         _SHELF = {}
@@ -30,20 +39,36 @@ def _load_shelf():
 
 def shelf_life_days(name: str, location: Optional[str] = None) -> Optional[int]:
     """
-    Return shelf-life days for `name`, ignoring `location`.
-    Tries exact case-insensitive match, then substring match.
+    Return shelf-life days for `name`. Matching ignores `location`.
+    Order of attempts:
+      1) exact case-insensitive match
+      2) substring match
+      3) fuzzy match (rapidfuzz) if available
     """
     if not name:
         return None
     shelf = _load_shelf()
     key = name.strip().lower()
+
     # exact match
     if key in shelf:
         return shelf[key]
+
     # substring match (e.g., "green apple" -> "apple")
     for k, days in shelf.items():
         if k in key or key in k:
             return days
+
+    # fuzzy match (best effort) if rapidfuzz is available
+    if _RAPID_AVAILABLE and shelf:
+        choices = list(shelf.keys())
+        match = process.extractOne(key, choices, scorer=fuzz.token_set_ratio)
+        if match:
+            matched_name, score, _ = match
+            if score >= 75:
+                return shelf.get(matched_name)
+
+    # no rule found
     return None
 
 def estimated_expiry(purchased_iso: str, days: int) -> str:
@@ -69,3 +94,68 @@ def days_left(expiry_iso: Optional[str]) -> Optional[int]:
     except Exception:
         return None
     return (exp - dt.date.today()).days
+
+def parse_date_input(s: Optional[str]) -> Optional[str]:
+    """
+    Parse a user-entered date string into ISO YYYY-MM-DD.
+    Accepts:
+      - "" or None -> today's date (ISO)
+      - "today" / "t"
+      - "yesterday" / "y"
+      - "N" or "Nd" or "N days ago" -> N days ago (e.g. "3", "3d", "3 days ago")
+      - "YYYY-MM-DD"
+      - "MM-DD" or "MM/DD" -> assumes current year
+      - "DD" -> assumes current month/year
+    Returns ISO date string or None if parsing fails.
+    """
+    if s is None:
+        return None
+    s = s.strip()
+    if s == "":
+        return dt.date.today().isoformat()
+    low = s.lower()
+    if low in ("today", "t"):
+        return dt.date.today().isoformat()
+    if low in ("yesterday", "y", "yd"):
+        return (dt.date.today() - dt.timedelta(days=1)).isoformat()
+
+    # relative days: "3", "3d", "3 days ago"
+    m = re.match(r"^(-?\d+)\s*(?:d(?:ays?)?)?$", low)
+    if m:
+        n = int(m.group(1))
+        return (dt.date.today() - dt.timedelta(days=n)).isoformat()
+
+    m = re.match(r"^(\d+)\s*days?\s*ago$", low)
+    if m:
+        n = int(m.group(1))
+        return (dt.date.today() - dt.timedelta(days=n)).isoformat()
+
+    # ISO date
+    try:
+        d = dt.date.fromisoformat(s)
+        return d.isoformat()
+    except Exception:
+        pass
+
+    # MM-DD or MM/DD
+    m = re.match(r"^(\d{1,2})[/-](\d{1,2})$", s)
+    if m:
+        mm = int(m.group(1))
+        dd = int(m.group(2))
+        try:
+            d = dt.date(dt.date.today().year, mm, dd)
+            return d.isoformat()
+        except Exception:
+            return None
+
+    # DD only
+    if re.match(r"^\d{1,2}$", s):
+        dd = int(s)
+        today = dt.date.today()
+        try:
+            d = dt.date(today.year, today.month, dd)
+            return d.isoformat()
+        except Exception:
+            return None
+
+    return None

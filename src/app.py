@@ -1,6 +1,6 @@
 from db_manager import init_db, add_item, list_items, DB_PATH, get_item, update_item, delete_item
 import datetime as dt
-from utils import shelf_life_days, estimated_expiry, days_left
+from utils import shelf_life_days, estimated_expiry, days_left, parse_date_input
 
 # ANSI color helpers (works in most terminals; colorama is optional on Windows)
 try:
@@ -44,16 +44,16 @@ def cmd_add_item():
     unit = input("Unit (g, L, pcs): ").strip()
     category = input("Category (e.g., Fruit, Dairy): ").strip()
     location = (input("Location (Fridge/Freezer/Pantry) [Fridge]: ").strip() or "Fridge").title()
-    purchased = input("Purchased on (YYYY-MM-DD) [today]: ").strip() or dt.date.today().isoformat()
+    purchased_raw = input("Purchased on (YYYY-MM-DD or '3' = 3 days ago) [today]: ").strip()
+    purchased = parse_date_input(purchased_raw) or dt.date.today().isoformat()
     expiry = input("Expiry on (YYYY-MM-DD) [blank to auto]: ").strip() or None
 
     if not expiry:
         days = shelf_life_days(name, location)
         if days is not None:
             guess = estimated_expiry(purchased, days)
-            yn = input(f"Auto-fill expiry using shelf life ({days} days) → {guess}? [Y/n] ").strip().lower()
-            if yn in ("", "y", "yes"):
-                expiry = guess
+            # Auto-fill expiry without asking confirmation when left blank
+            expiry = guess
         else:
             print("No shelf-life rule found for this item. Saving without expiry.")
 
@@ -133,19 +133,25 @@ def cmd_edit_item():
     n_unit = input(f"Unit [{unit}]: ").strip() or unit
     n_cat = input(f"Category [{category or ''}]: ").strip() or category
     n_loc = (input(f"Location [{location}]: ").strip() or location).title()
-    n_purchased = input(f"Purchased on [{purchased or dt.date.today().isoformat()}]: ").strip() or purchased
+    n_purchased_raw = input(f"Purchased on [{purchased or dt.date.today().isoformat()}]: ").strip()
+    if n_purchased_raw == "":
+        n_purchased = purchased
+    else:
+        parsed = parse_date_input(n_purchased_raw)
+        if parsed is None:
+            print("Couldn't parse date, keeping existing.")
+            n_purchased = purchased
+        else:
+            n_purchased = parsed
     n_expiry = input(f"Expiry on [{expiry or ''}] (blank to auto/use existing): ").strip()
     if n_expiry == "":
-        # decide: keep existing expiry (if any) or try auto-fill if none
+        # decide: keep existing expiry (if any) or auto-fill if none — no confirmation
         if not expiry:
             days = shelf_life_days(n_name, n_loc)
             if days is not None:
                 guess = estimated_expiry(n_purchased or dt.date.today().isoformat(), days)
-                yn = input(f"Auto-fill expiry using shelf life ({days} days) → {guess}? [Y/n] ").strip().lower()
-                if yn in ("", "y", "yes"):
-                    n_expiry = guess
-                else:
-                    n_expiry = None
+                # Auto-fill expiry without asking confirmation when left blank
+                n_expiry = guess
             else:
                 n_expiry = None
         else:
@@ -201,7 +207,8 @@ def main():
         elif choice == "2": cmd_list_items()
         elif choice == "3": cmd_list_by_urgency()
         elif choice == "4": cmd_edit_item()
-        elif choice == "5": cmd_delete_item()
+
+        elif choice == "5": cmd_delete_item()       
         elif choice == "0": break
         else: print("Invalid option.")
 
