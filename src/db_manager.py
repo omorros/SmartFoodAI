@@ -47,3 +47,32 @@ def list_items():
                           FROM items""").fetchall()
     con.close()
     return rows
+
+# --- new helpers for edit/delete ---
+def get_item(item_id):
+    """Return full row for item id or None."""
+    con = get_con()
+    row = con.execute("""SELECT id,name,category,qty,unit,location,purchased_on,expiry_on,source,notes
+                         FROM items WHERE id = ?""", (item_id,)).fetchone()
+    con.close()
+    return row
+
+def update_item(item_id, name, category, qty, unit, location, purchased_on, expiry_on, source=None, notes=None):
+    """Update item by id. Provide full values (use existing to keep)."""
+    con = get_con()
+    con.execute(
+        """UPDATE items SET name=?, category=?, qty=?, unit=?, location=?, purchased_on=?, expiry_on=?, source=?, notes=?
+           WHERE id = ?""",
+        (name, category, qty, unit, location, purchased_on, expiry_on, source, notes, item_id)
+    )
+    con.commit()
+    con.close()
+
+def delete_item(item_id):
+    """Delete item by id. Returns True if row deleted."""
+    con = get_con()
+    cur = con.execute("DELETE FROM items WHERE id = ?", (item_id,))
+    con.commit()
+    affected = cur.rowcount
+    con.close()
+    return affected > 0
