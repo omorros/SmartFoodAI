@@ -43,5 +43,3 @@ Python · TensorFlow · Keras · scikit-learn · OpenCV · pytesseract · SQLite
 ---
 
 Developed by [@omorros](https://github.com/omorros)  
-BSc (Hons) Software Engineering @ ARU (Cambridge, UK)
-
