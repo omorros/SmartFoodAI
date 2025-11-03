@@ -1,6 +1,8 @@
 from db_manager import init_db, add_item, list_items, DB_PATH, get_item, update_item, delete_item, consume_item
 import datetime as dt
 from utils import shelf_life_days, estimated_expiry, days_left, parse_date_input
+import re
+import os
 
 # ANSI color helpers (works in most terminals; colorama is optional on Windows)
 try:
@@ -8,8 +10,6 @@ try:
     colorama.init()
 except Exception:
     colorama = None
-
-import re
 
 RED = "\033[31m"
 YELLOW = "\033[33m"
@@ -58,6 +58,7 @@ def menu():
     print("[4] Edit item")
     print("[5] Delete item")
     print("[6] Consume item")  # New option
+    print("[7] Recognize item from image")  # NEW
     print("[0] Exit")
 
 
@@ -300,6 +301,33 @@ def cmd_consume_item():
                 print("✔ Item deleted.")
             else:
                 print("Error deleting item.")
+                
+# NEW stub for future recognition integration
+def cmd_recognize_image():
+    """
+    Placeholder handler for 'Recognize item from image'.
+    When your model/module is ready, implement recognizer.recognize(path)
+    that returns a result dict or string and adapt this stub to use it.
+    """
+    path = input("Path to image file (or Enter to cancel): ").strip()
+    if not path:
+        print("Cancelled.")
+        return
+    if not os.path.isfile(path):
+        print("File not found:", path)
+        return
+
+    try:
+        # Try to call a future recognizer module
+        import recognizer  # implement later: recognizer.recognize(path) -> dict/str
+        result = recognizer.recognize(path)
+        print("Recognition result:", result)
+    except ImportError:
+        # Friendly placeholder behavior until your model is available
+        print("Recognizer not implemented yet. This is a placeholder.")
+        print("Image path saved/seen (for future processing):", path)
+    except Exception as e:
+        print("Error while running recognizer (placeholder):", e)
 
 def main():
     init_db()
@@ -313,10 +341,10 @@ def main():
         elif choice == "4": cmd_edit_item()
         elif choice == "5": cmd_delete_item()
         elif choice == "6": cmd_consume_item()  # New handler
+        elif choice == "7": cmd_recognize_image()  # NEW handler
         elif choice == "0": break
         else: print("Invalid option.")
 
 
 if __name__ == "__main__":
     main()
-    
