@@ -3,6 +3,8 @@ import pyzxing
 from db_manager import add_item
 import datetime as dt
 
+from utils import parse_date_input
+
 # --- BARCODE SCANNER (offline image detection) ---
 def scan_barcode_local(image_path: str):
     """
@@ -75,8 +77,13 @@ def scan_and_add_product(image_path: str):
     qty = float(input("Quantity (e.g., 1): ") or "1")
     unit = input("Unit (g, L, pcs): ").strip() or "pcs"
     location = input("Location (Fridge/Freezer/Pantry) [Fridge]: ").strip().title() or "Fridge"
-    purchased = dt.date.today().isoformat()
+
+    purchased_raw = input("Purchased on (YYYY-MM-DD or '3' = 3 days ago) [today]: ").strip()
+    from utils import parse_date_input
+    purchased = parse_date_input(purchased_raw) or dt.date.today().isoformat()
+
     expiry = input("Expiry date (YYYY-MM-DD) [optional]: ").strip() or None
+
 
     try:
         iid = add_item(name, category, qty, unit, location, purchased, expiry, source="barcode", notes=f"barcode:{barcode}")
