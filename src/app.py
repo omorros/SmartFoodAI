@@ -5,6 +5,8 @@ from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 import re
 import os
+import requests
+import datetime as dt
 
 # ANSI color helpers
 try:
@@ -56,28 +58,73 @@ def menu():
     print("[8] Add item via barcode scan")
     print("[0] Exit")
 
+import requests
+
 def cmd_add_item():
     name = input("Name: ").strip()
     qty = float(input("Qty (e.g., 1): ") or "1")
     unit = input("Unit (g, L, pcs): ").strip()
-    category = input("Category (e.g., Fruit, Dairy): ").strip()
+    category = input("Category (e.g., Fruit, Dairy, Meat, Snack, Vegetable, Grain): ").strip().lower()
     location = (input("Location (Fridge/Freezer/Pantry) [Fridge]: ").strip() or "Fridge").title()
+
+    # --- Context-aware questions ---
+    if category in ["meat", "fish", "snack", "dairy"]:
+        packaging = input("Packaging (sealed/open) [sealed]: ").strip() or "sealed"
+    else:
+        packaging = "sealed"  # default, skip question
+
+    if category in ["meat", "fish", "dairy", "prepared food"]:
+        state = input("State (raw/cooked) [raw]: ").strip() or "raw"
+    else:
+        state = "raw"  # not relevant for most produce
+
+    # Temperature defaults by location
+    temperature = 4 if location.lower() == "fridge" else (-18 if location.lower() == "freezer" else 20)
+
     purchased_raw = input("Purchased on (YYYY-MM-DD or '3' = 3 days ago) [today]: ").strip()
     purchased = parse_date_input(purchased_raw) or dt.date.today().isoformat()
-    expiry = input("Expiry on (YYYY-MM-DD) [blank to auto]: ").strip() or None
+    expiry = None
 
-    if not expiry:
-        days = shelf_life_days(name, location)
-        if days is not None:
-            expiry = estimated_expiry(purchased, days)
-        else:
-            print("No shelf-life rule found for this item. Saving without expiry.")
-
+    # --- Predict shelf life using FastAPI ---
     try:
-        iid = add_item(name, category, qty, unit, location, purchased, expiry, source="manual", notes=None)
+        payload = {
+            "category": category,
+            "location": location.lower(),
+            "packaging": packaging.lower(),
+            "state": state.lower(),
+            "temperature": temperature
+        }
+        response = requests.post("http://127.0.0.1:8000/predict", json=payload)
+        if response.status_code == 200:
+            data = response.json()
+            predicted_days = data.get("predicted_shelf_life_days")
+            if predicted_days:
+                expiry_date = dt.date.today() + dt.timedelta(days=float(predicted_days))
+                expiry = expiry_date.isoformat()
+                print(f"Predicted shelf life: ~{predicted_days:.1f} days (expiry: {expiry})")
+
+                # --- Ask user to confirm prediction ---
+                confirm = input("Is this expiry accurate? (y/n or enter a custom date YYYY-MM-DD): ").strip().lower()
+                if confirm == "n":
+                    expiry = input("Enter expiry date manually (YYYY-MM-DD): ").strip()
+                elif len(confirm) == 10 and "-" in confirm:  # custom date input
+                    expiry = confirm
+                else:
+                    print("Using predicted expiry.")
+            else:
+                print("Could not get a prediction from API.")
+        else:
+            print("API error:", response.text)
+    except Exception as e:
+        print("Prediction failed:", e)
+
+    # --- Save item to DB ---
+    try:
+        iid = add_item(name, category, qty, unit, location, purchased, expiry, source="AI", notes=None)
         print(f"Saved (id {iid}).")
     except Exception as e:
         print("Error saving item:", e)
+
 
 def cmd_list_items():
     rows = list_items()
