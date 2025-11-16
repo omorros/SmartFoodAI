@@ -1,6 +1,6 @@
 from db_manager import init_db, add_item, list_items, DB_PATH, get_item, update_item, delete_item, consume_item
 import datetime as dt
-from utils import shelf_life_days, estimated_expiry, days_left, parse_date_input
+from utils import shelf_life_days, estimated_expiry, days_left, parse_date_input, safe_input
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 import re
@@ -61,31 +61,28 @@ def menu():
 import requests
 
 def cmd_add_item():
-    name = input("Name: ").strip()
-    qty = float(input("Qty (e.g., 1): ") or "1")
-    unit = input("Unit (g, L, pcs): ").strip()
-    category = input("Category (e.g., Fruit, Dairy, Meat, Snack, Vegetable, Grain): ").strip().lower()
-    location = (input("Location (Fridge/Freezer/Pantry) [Fridge]: ").strip() or "Fridge").title()
+    name = safe_input("Name: ", allow_empty=False)
+    qty = safe_input("Qty (e.g., 1): ", numeric=True)
+    unit = safe_input("Unit (g, L, pcs): ", allow_empty=False)
+    category = safe_input("Category (e.g., Fruit, Dairy, Meat, Snack, Vegetable, Grain): ", allow_empty=False).lower()
+    location = (safe_input("Location (Fridge/Freezer/Pantry) [Fridge]: ", allow_empty=True) or "Fridge").title()
 
-    # --- Context-aware questions ---
     if category in ["meat", "fish", "snack", "dairy"]:
-        packaging = input("Packaging (sealed/open) [sealed]: ").strip() or "sealed"
+        packaging = safe_input("Packaging (sealed/open) [sealed]: ", allow_empty=True) or "sealed"
     else:
-        packaging = "sealed"  # default, skip question
+        packaging = "sealed"
 
     if category in ["meat", "fish", "dairy", "prepared food"]:
-        state = input("State (raw/cooked) [raw]: ").strip() or "raw"
+        state = safe_input("State (raw/cooked) [raw]: ", allow_empty=True) or "raw"
     else:
-        state = "raw"  # not relevant for most produce
+        state = "raw"
 
-    # Temperature defaults by location
     temperature = 4 if location.lower() == "fridge" else (-18 if location.lower() == "freezer" else 20)
 
-    purchased_raw = input("Purchased on (YYYY-MM-DD or '3' = 3 days ago) [today]: ").strip()
+    purchased_raw = safe_input("Purchased on (YYYY-MM-DD or '3' = 3 days ago) [today]: ", allow_empty=True)
     purchased = parse_date_input(purchased_raw) or dt.date.today().isoformat()
     expiry = None
 
-    # --- Predict shelf life using FastAPI ---
     try:
         payload = {
             "category": category,
@@ -102,12 +99,10 @@ def cmd_add_item():
                 expiry_date = dt.date.today() + dt.timedelta(days=float(predicted_days))
                 expiry = expiry_date.isoformat()
                 print(f"Predicted shelf life: ~{predicted_days:.1f} days (expiry: {expiry})")
-
-                # --- Ask user to confirm prediction ---
-                confirm = input("Is this expiry accurate? (y/n or enter a custom date YYYY-MM-DD): ").strip().lower()
+                confirm = safe_input("Is this expiry accurate? (y/n or enter a custom date YYYY-MM-DD): ", allow_empty=True)
                 if confirm == "n":
-                    expiry = input("Enter expiry date manually (YYYY-MM-DD): ").strip()
-                elif len(confirm) == 10 and "-" in confirm:  # custom date input
+                    expiry = safe_input("Enter expiry date manually (YYYY-MM-DD): ", allow_empty=False)
+                elif len(confirm or "") == 10 and "-" in confirm:
                     expiry = confirm
                 else:
                     print("Using predicted expiry.")
@@ -118,13 +113,11 @@ def cmd_add_item():
     except Exception as e:
         print("Prediction failed:", e)
 
-    # --- Save item to DB ---
     try:
         iid = add_item(name, category, qty, unit, location, purchased, expiry, source="AI", notes=None)
         print(f"Saved (id {iid}).")
     except Exception as e:
         print("Error saving item:", e)
-
 
 def cmd_list_items():
     rows = list_items()
@@ -160,15 +153,14 @@ def _show_items_brief():
 
 def cmd_edit_item():
     _show_items_brief()
-    s = input("Enter item ID to edit (or Enter to cancel): ").strip()
+    s = safe_input("Enter item ID to edit (or Enter to cancel): ", allow_empty=True)
     if not s:
         print("Cancelled.")
         return
-    try:
-        iid = int(s)
-    except ValueError:
+    if not s.isdigit():
         print("Invalid id.")
         return
+    iid = int(s)
     row = get_item(iid)
     if not row:
         print("Item not found.")
@@ -197,22 +189,21 @@ def cmd_edit_item():
 
 def cmd_delete_item():
     _show_items_brief()
-    s = input("Enter item ID to delete (or Enter to cancel): ").strip()
+    s = safe_input("Enter item ID to delete (or Enter to cancel): ", allow_empty=True)
     if not s:
         print("Cancelled.")
         return
-    try:
-        iid = int(s)
-    except ValueError:
+    if not s.isdigit():
         print("Invalid id.")
         return
+    iid = int(s)
     row = get_item(iid)
     if not row:
         print("Item not found.")
         return
     _, name, category, qty, unit, location, purchased, expiry, source, notes = row
     print(f"\nSelected: {iid} - {name} | {qty} {unit} | {category or '-'} | {location} | purchased: {purchased or '-'} | expiry: {expiry or '-'}")
-    yn = input("Delete this item? [y/N] ").strip().lower()
+    yn = safe_input("Delete this item? [y/N] ", valid_options=["y", "yes", "n", "no"], allow_empty=True)
     if yn in ("y", "yes"):
         delete_item(iid)
         print("Item deleted.")
@@ -221,7 +212,7 @@ def cmd_delete_item():
 
 def cmd_consume_item():
     _show_items_brief()
-    s = input("Enter item ID to consume (or Enter to cancel): ").strip()
+    s = safe_input("Enter item ID to consume (or Enter to cancel): ", allow_empty=True)
     if not s:
         print("Cancelled.")
         return
@@ -233,13 +224,11 @@ def cmd_consume_item():
     if not row:
         print("Item not found.")
         return
-
     _, name, _, qty, unit, _, _, _, _, _ = row
     print(f"\nCurrent: {name} - {qty} {unit}")
-
     while True:
-        amount_input = input(f"Amount to consume [all={qty}]: ").strip().lower()
-        if amount_input in ("", "all"):
+        amount_input = safe_input(f"Amount to consume [all={qty}]: ", allow_empty=True)
+        if amount_input is None or str(amount_input).lower() == "all":
             amount = qty
             break
         try:
@@ -253,24 +242,21 @@ def cmd_consume_item():
             break
         except ValueError:
             print("Invalid input. Please enter a number or 'all'.")
-
     ok, new_qty = consume_item(iid, amount)
     if not ok:
         print("Error updating item.")
         return
-
     print(f"Updated: {new_qty} {unit} remaining")
     if new_qty <= 0:
-        yn = input("Item is empty. Delete it? [y/N] ").strip().lower()
+        yn = safe_input("Item is empty. Delete it? [y/N] ", valid_options=["y", "yes", "n", "no"], allow_empty=True)
         if yn in ("y", "yes"):
             delete_item(iid)
             print("Item deleted.")
         else:
             print("Item retained in database.")
 
-
 def cmd_recognize_image():
-    path = input("Path to image file (or Enter to cancel): ").strip()
+    path = safe_input("Path to image file (or Enter to cancel): ", allow_empty=True)
     if not path:
         print("Cancelled.")
         return
@@ -292,7 +278,7 @@ def main():
     print(f"Using database: {DB_PATH}")
     while True:
         menu()
-        choice = input("Choose: ").strip()
+        choice = safe_input("Choose an option: ", valid_options=[str(i) for i in range(9)], allow_empty=False)
         if choice == "1": cmd_add_item()
         elif choice == "2": cmd_list_items()
         elif choice == "3": cmd_list_by_urgency()
@@ -316,6 +302,7 @@ def main():
             except Exception as e:
                 print("Error opening file dialog:", e)
         elif choice == "0":
+            print("Exiting SmartFoodAI. Goodbye.")
             break
         else:
             print("Invalid option.")

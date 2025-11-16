@@ -159,3 +159,18 @@ def parse_date_input(s: Optional[str]) -> Optional[str]:
             return None
 
     return None
+
+def safe_input(prompt, valid_options=None, allow_empty=False):
+    """
+    Generic input function that validates user input.
+    - valid_options: list of allowed lowercase strings (optional)
+    - allow_empty: if True, empty input returns None
+    """
+    while True:
+        user_input = input(prompt).strip()
+        if user_input == "" and allow_empty:
+            return None
+        if valid_options and user_input.lower() not in valid_options:
+            print(f"Invalid input. Valid options are: {', '.join(valid_options)}.")
+            continue
+        return user_input
