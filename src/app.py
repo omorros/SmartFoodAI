@@ -225,24 +225,49 @@ def cmd_consume_item():
     if not s:
         print("Cancelled.")
         return
+    if not s.isdigit():
+        print("Please enter a valid numeric ID.")
+        return
     iid = int(s)
     row = get_item(iid)
     if not row:
         print("Item not found.")
         return
+
     _, name, _, qty, unit, _, _, _, _, _ = row
     print(f"\nCurrent: {name} - {qty} {unit}")
-    amount = float(input(f"Amount to consume [all={qty}]: ").strip() or qty)
+
+    while True:
+        amount_input = input(f"Amount to consume [all={qty}]: ").strip().lower()
+        if amount_input in ("", "all"):
+            amount = qty
+            break
+        try:
+            amount = float(amount_input)
+            if amount <= 0:
+                print("Please enter a positive number.")
+                continue
+            if amount > qty:
+                print("Cannot consume more than available quantity.")
+                continue
+            break
+        except ValueError:
+            print("Invalid input. Please enter a number or 'all'.")
+
     ok, new_qty = consume_item(iid, amount)
     if not ok:
         print("Error updating item.")
         return
+
     print(f"Updated: {new_qty} {unit} remaining")
     if new_qty <= 0:
         yn = input("Item is empty. Delete it? [y/N] ").strip().lower()
         if yn in ("y", "yes"):
             delete_item(iid)
             print("Item deleted.")
+        else:
+            print("Item retained in database.")
+
 
 def cmd_recognize_image():
     path = input("Path to image file (or Enter to cancel): ").strip()
