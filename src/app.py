@@ -7,6 +7,8 @@ import re
 import os
 import requests
 import datetime as dt
+from semantic_mapper import get_closest_category
+
 
 # ANSI color helpers
 try:
@@ -61,28 +63,49 @@ def menu():
 import requests
 
 def cmd_add_item():
-    name = safe_input("Name: ", allow_empty=False)
-    qty = safe_input("Qty (e.g., 1): ", numeric=True)
-    unit = safe_input("Unit (g, L, pcs): ", allow_empty=False)
-    category = safe_input("Category (e.g., Fruit, Dairy, Meat, Snack, Vegetable, Grain): ", allow_empty=False).lower()
-    location = (safe_input("Location (Fridge/Freezer/Pantry) [Fridge]: ", allow_empty=True) or "Fridge").title()
+    # --- Semantic AI food name and category detection ---
+    user_food = input("Name of food item: ").strip()
+    if not user_food:
+        print("Please enter a valid food name.")
+        return
 
+    try:
+        from semantic_mapper import get_closest_category
+        auto_category, similarity = get_closest_category(user_food)
+        print(f"Detected category: {auto_category} (similarity={similarity})")
+        use_auto = input("Use this category? [Y/n]: ").strip().lower()
+        if use_auto in ("", "y", "yes"):
+            category = auto_category
+        else:
+            category = input("Enter category manually: ").strip().lower()
+    except Exception as e:
+        print("Error in semantic mapping:", e)
+        category = input("Category (e.g., Fruit, Dairy, Meat, Snack, Vegetable, Grain): ").strip().lower()
+
+    name = user_food
+    qty = float(input("Qty (e.g., 1): ") or "1")
+    unit = input("Unit (g, L, pcs): ").strip()
+    location = (input("Location (Fridge/Freezer/Pantry) [Fridge]: ").strip() or "Fridge").title()
+
+    # --- Context-aware packaging and state questions ---
     if category in ["meat", "fish", "snack", "dairy"]:
-        packaging = safe_input("Packaging (sealed/open) [sealed]: ", allow_empty=True) or "sealed"
+        packaging = input("Packaging (sealed/open) [sealed]: ").strip() or "sealed"
     else:
         packaging = "sealed"
 
     if category in ["meat", "fish", "dairy", "prepared food"]:
-        state = safe_input("State (raw/cooked) [raw]: ", allow_empty=True) or "raw"
+        state = input("State (raw/cooked) [raw]: ").strip() or "raw"
     else:
         state = "raw"
 
+    # --- Temperature defaults based on location ---
     temperature = 4 if location.lower() == "fridge" else (-18 if location.lower() == "freezer" else 20)
 
-    purchased_raw = safe_input("Purchased on (YYYY-MM-DD or '3' = 3 days ago) [today]: ", allow_empty=True)
+    purchased_raw = input("Purchased on (YYYY-MM-DD or '3' = 3 days ago) [today]: ").strip()
     purchased = parse_date_input(purchased_raw) or dt.date.today().isoformat()
     expiry = None
 
+    # --- Predict shelf life using FastAPI model ---
     try:
         payload = {
             "category": category,
@@ -99,10 +122,11 @@ def cmd_add_item():
                 expiry_date = dt.date.today() + dt.timedelta(days=float(predicted_days))
                 expiry = expiry_date.isoformat()
                 print(f"Predicted shelf life: ~{predicted_days:.1f} days (expiry: {expiry})")
-                confirm = safe_input("Is this expiry accurate? (y/n or enter a custom date YYYY-MM-DD): ", allow_empty=True)
+
+                confirm = input("Is this expiry accurate? (y/n or enter a custom date YYYY-MM-DD): ").strip().lower()
                 if confirm == "n":
-                    expiry = safe_input("Enter expiry date manually (YYYY-MM-DD): ", allow_empty=False)
-                elif len(confirm or "") == 10 and "-" in confirm:
+                    expiry = input("Enter expiry date manually (YYYY-MM-DD): ").strip()
+                elif len(confirm) == 10 and "-" in confirm:
                     expiry = confirm
                 else:
                     print("Using predicted expiry.")
@@ -113,11 +137,13 @@ def cmd_add_item():
     except Exception as e:
         print("Prediction failed:", e)
 
+    # --- Save item to local database ---
     try:
         iid = add_item(name, category, qty, unit, location, purchased, expiry, source="AI", notes=None)
         print(f"Saved (id {iid}).")
     except Exception as e:
         print("Error saving item:", e)
+
 
 def cmd_list_items():
     rows = list_items()
