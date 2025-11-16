@@ -1,68 +1,118 @@
 # ==============================================================
-# api_server.py — SmartFoodAI FastAPI backend
+# SMARTFOOD AI - SHELF LIFE PREDICTION API
 # ==============================================================
-
 from fastapi import FastAPI
 from pydantic import BaseModel
-import joblib
 import pandas as pd
+import numpy as np
+import joblib
+import traceback
 import os
 
-# --------------------------------------------------------------
-# Initialize FastAPI app
-# --------------------------------------------------------------
-app = FastAPI(title="SmartFoodAI Shelf Life Prediction API")
-
-# --------------------------------------------------------------
-# Load model and preprocessing assets
-# --------------------------------------------------------------
-MODEL_PATH = os.path.join("models", "shelf_life_model.pkl")
-SCALER_PATH = os.path.join("models", "scaler.pkl")
-COLUMNS_PATH = os.path.join("models", "model_columns.pkl")
-
-model = joblib.load(MODEL_PATH)
-scaler = joblib.load(SCALER_PATH)
-model_columns = joblib.load(COLUMNS_PATH)
-
-# --------------------------------------------------------------
-# Define expected input format
-# --------------------------------------------------------------
-class ProductInput(BaseModel):
+# ==============================================================
+# DEFINE INPUT SCHEMA (for FastAPI request body)
+# ==============================================================
+class InputData(BaseModel):
     category: str
     location: str
     packaging: str
     state: str
+    temperature: float
 
-# --------------------------------------------------------------
-# Root endpoint
-# --------------------------------------------------------------
+
+# ==============================================================
+# INITIALIZE FASTAPI APP
+# ==============================================================
+app = FastAPI(title="SmartFoodAI Shelf-Life Prediction API")
+
+# ==============================================================
+# LOAD MODEL ON STARTUP
+# ==============================================================
+MODEL_PATH = os.path.join("models", "SmartFoodAI_Shelflife_Model.pkl")
+model = None
+
+print(f"Looking for model at: {MODEL_PATH}")
+try:
+    model = joblib.load(MODEL_PATH)
+    print(f"Model loaded successfully from {MODEL_PATH}")
+except Exception as e:
+    print("ERROR while loading model:")
+    traceback.print_exc()
+    model = None
+
+
+# ==============================================================
+# ROOT ENDPOINT
+# ==============================================================
 @app.get("/")
-def home():
-    return {"message": "SmartFoodAI Shelf Life Prediction API is running."}
+def root():
+    return {"message": "SmartFoodAI Shelf-Life Prediction API is running!"}
 
-# --------------------------------------------------------------
-# Prediction endpoint
-# --------------------------------------------------------------
+
+# ==============================================================
+# PREDICTION ENDPOINT
+# ==============================================================
 @app.post("/predict")
-def predict(data: ProductInput):
-    # Convert input to DataFrame
-    df = pd.DataFrame([data.dict()])
+async def predict(input_data: InputData):
+    try:
+        if model is None:
+            return {"error": "Model not loaded"}
 
-    # One-hot encode and align columns
-    df_encoded = pd.get_dummies(df)
-    for col in model_columns:
-        if col not in df_encoded:
-            df_encoded[col] = 0
-    df_encoded = df_encoded[model_columns]
+        # Prepare input for prediction
+        data = {
+            "category": [input_data.category.lower()],
+            "location": [input_data.location.lower()],
+            "packaging": [input_data.packaging.lower()],
+            "state": [input_data.state.lower()],
+            "temperature": [input_data.temperature],
+        }
 
-    # Scale numeric columns
-    df_scaled = scaler.transform(df_encoded)
+        df = pd.DataFrame(data)
+        print("\nIncoming data:\n", df)
 
-    # Predict
-    prediction = model.predict(df_scaled)[0]
+        # Predict log ratio (as trained)
+        ratio_log_pred = model.predict(df)[0]
 
-    return {
-        "category": data.category,
-        "location": data.location,
-        "predicted_shelf_life_days": round(float(prediction), 2)
-    }
+        # Reverse the log transform and calibrate
+        ratio = max(0.3, min(3.0, float(np.exp(ratio_log_pred) + 0.7)))
+
+        # Use baseline realistic reference values
+        baseline_rules = {
+            "fruit": {"fridge": 7, "freezer": 180, "pantry": 3},
+            "meat": {"fridge": 5, "freezer": 270, "pantry": 0.5},
+            "snack": {"fridge": 60, "freezer": 120, "pantry": 180},
+            "vegetable": {"fridge": 10, "freezer": 180, "pantry": 4},
+            "dairy": {"fridge": 14, "freezer": 90, "pantry": 2},
+            "grain": {"fridge": 60, "freezer": 180, "pantry": 365},
+            "beverage": {"fridge": 120, "freezer": 180, "pantry": 180},
+            "unknown": {"fridge": 10, "freezer": 60, "pantry": 30},
+        }
+
+        baseline = baseline_rules.get(input_data.category.lower(), baseline_rules["unknown"]).get(
+            input_data.location.lower(), 7
+        )
+
+        predicted_days = round(baseline * ratio, 1)
+        predicted_days = max(predicted_days, 0.1)  # Avoid negative or zero days
+
+        return {
+            "predicted_shelf_life_days": predicted_days,
+            "baseline_days": baseline,
+            "calibrated_ratio": ratio,
+            "input_data": data,
+            "status": "success"
+        }
+
+    except Exception as e:
+        print("ERROR in /predict:", e)
+        traceback.print_exc()
+        return {"error": str(e)}
+
+
+
+# ==============================================================
+# RUN (for local debugging)
+# ==============================================================
+# Run manually with:
+# uvicorn src.api_server:app --reload
+# Then open: http://127.0.0.1:8000/docs
