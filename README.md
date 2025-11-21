@@ -1,86 +1,166 @@
-# SmartFood AI  
-**An AI-powered food management system to reduce household food waste**
+# SmartFoodAI
+An AI-powered food management, expiry-tracking, and image-recognition system with both a console interface and a React-based web frontend.
 
-SmartFood AI is a Python-based console application that helps users manage, track, and identify food items intelligently.  
-It integrates barcode recognition, image classification, and expiry prediction features to promote sustainable food consumption and reduce waste.
+SmartFoodAI combines computer vision, barcode scanning, expiry prediction, a FastAPI backend, and a React frontend to help reduce household food waste.  
+Users can register products manually, via barcode, or through image recognition using a custom-trained CNN model.
 
----
+The project includes:
+- A console-based CLI
+- A backend API (FastAPI)
+- A React web interface under `/frontend`
 
-## Overview
+## Key Features
 
-SmartFood AI allows users to register products manually, by barcode, or through computer vision.  
-It stores all items in a local SQLite database, predicts expiry dates for fresh produce, and retrieves product data automatically from the OpenFoodFacts API.
+### 1. Food Inventory Management
+- Add, update, delete, and consume food items.
+- SQLite-based storage.
+- Colour-coded expiry indicators:
+  - Red: expired
+  - Yellow: expiring soon (≤ 3 days)
+  - Green: fresh
 
----
+### 2. Computer Vision (Image Recognition)
+- TensorFlow/Keras CNN model.
+- Image classification via FastAPI (`/predict` endpoint).
+- User confirmation step after prediction.
 
-## Main Features
+### 3. Barcode Scanning
+- Barcode extraction via Pyzxing and OpenCV.
+- Automatic product lookup using the OpenFoodFacts API.
 
-### Core Functionality
-- Add, edit, view, delete, and consume food items.
-- Store data locally using SQLite.
-- Track expiry dates with colour-coded urgency indicators:
-  - Red = expired  
-  - Yellow = expires soon (≤3 days)  
-  - Green = fresh (>3 days)
+### 4. Expiry Prediction Engine
+- Shelf-life rules for fruits and vegetables.
+- Automatic expiry suggestions for items without visible dates.
 
-### AI and Machine Learning Components
-- **CNN Model:** Identifies fruits and vegetables from images.  
-- **Barcode Scanner:** Detects and decodes product barcodes using Pyzxing.  
-- **OpenFoodFacts API Integration:** Automatically retrieves product names, brands, and categories by barcode.  
-- **Shelf-Life Estimation:** Predicts expiry for products without visible expiry dates.
+### 5. User Interfaces
+**Console Application:**  
+- Full text-based menu system
 
-### User Interaction
-- Add items manually, by barcode, or by image recognition.
-- File picker interface for selecting barcode images.
-- Flexible date input (supports formats like `YYYY-MM-DD` or relative entries such as `3` = three days ago).
-- Automatic expiry suggestion based on known shelf-life data.
+**Web Interface (React, located in `/frontend`):**  
+- Modern UI for interacting with the FastAPI backend  
+- Product viewing and future real-time inventory features  
 
----
+## Project Structure
+
+SmartFoodAI/
+│
+├── frontend/                       # React web interface
+│   ├── src/
+│   ├── public/
+│   └── package.json
+│
+├── models/
+│   ├── fruit_veg_model.h5
+│   └── label_map.json
+│
+├── recognizer/
+│   ├── recognizer.py
+│   ├── preprocess.py
+│   └── fastapi_app.py              # FastAPI inference server
+│
+├── barcode/
+│   └── barcode_reader.py
+│
+├── database/
+│   └── smartfood.db
+│
+├── db_manager.py
+├── utils.py
+├── main.py                         # Console menu
+├── requirements.txt
+└── README.md
 
 ## Technology Stack
 
-| Component | Technology |
-|------------|-------------|
-| Programming Language | Python 3.12 |
-| Database | SQLite |
-| Machine Learning | TensorFlow / Keras (CNN) |
-| Barcode Recognition | Pyzxing and OpenCV |
-| API Integration | OpenFoodFacts REST API |
-| Environment | Python Virtual Environment (`.venv`) |
-| Interface | Console-based CLI |
+### Backend
+- Python 3.12  
+- FastAPI  
+- SQLite  
+- TensorFlow / Keras  
+  - CNN image-classification model for fruit and vegetable recognition  
+  - Regression-based expiry prediction model for estimating shelf-life  
+- Pyzxing and OpenCV for barcode detection  
+- OpenFoodFacts REST API for product metadata  
+
+### Frontend
+- React  
+- JavaScript / TypeScript (depending on project setup)  
+- Vite development server  
+
+### Interfaces
+- Console-based CLI  
+- Web UI (React frontend communicating with the FastAPI backend)
+
+## Machine Learning Models
+
+SmartFoodAI integrates two separate machine learning components that together enable automated food recognition and expiry estimation.
+
+### 1. Image Classification Model (CNN)
+
+**Purpose:**  
+Identify fruits and vegetables from user images.
+
+**Architecture:**  
+- TensorFlow / Keras Sequential CNN  
+- Convolutional layers with ReLU activation  
+- Max-pooling layers for spatial reduction  
+- Fully connected dense layers  
+- Softmax output for multi-class classification
+
+**Input Pipeline:**  
+- Images resized to 128×128  
+- Normalised pixel values (0–1)  
+- Augmentation applied during training (rotation, flip, zoom)
+
+**Model Outputs:**  
+- Predicted class label  
+- Classification confidence  
+- Used by the backend to suggest product names when adding new items
+
+**Files:**  
+- `models/fruit_veg_model.h5`  
+- `models/label_map.json`
 
 ---
 
-## Data Source: OpenFoodFacts API
+### 2. Expiry Prediction Model (Regression-Based)
 
-SmartFood AI connects to the [OpenFoodFacts API](https://world.openfoodfacts.org/data) to retrieve:
-- Product names, brands, and categories  
-- Basic nutritional and packaging information  
-- Barcode identifiers (EAN/UPC)
+**Purpose:**  
+Predict the estimated expiry date of products that do not contain a visible expiry label (e.g., fresh produce).
 
-The OpenFoodFacts API includes most major UK and EU supermarket products.  
-If a product is not found, the application allows manual data entry.
+**Method:**  
+A rule-based regression model that combines:
+- Known shelf-life datasets  
+- Product category mappings  
+- Date-of-purchase estimation  
+- User-defined overrides
 
----
+The model outputs:
+- Estimated expiry date  
+- Confidence factor (based on category stability)
+- Colour-coded freshness indicators
 
-## Future Development
-
-- Voice-based input for natural speech commands.  
-- Cloud data synchronisation and multi-device support.  
-- Email or app notifications for upcoming expiries.  
-- Web dashboard and data visualisation tools.
-
----
-
-## Author
-
-**Oriol Morros**  
-BSc (Hons) Software Engineering — Anglia Ruskin University, Cambridge, UK  
-GitHub: [https://github.com/omorros](https://github.com/omorros)
+This module is implemented inside:
+- `utils.py` (shelf-life database + heuristics)
+- `db_manager.py` (integration when storing items)
 
 ---
 
-## License
+### 3. API Integration for Model Inference
 
-This project is released under the **MIT License**.  
-You may use, modify, and distribute this software with appropriate attribution.
+The `recognizer/fastapi_app.py` provides:
+- `/predict` endpoint for CNN inference  
+- `/health` endpoint for readiness checks
+
+The React frontend communicates with this API to:
+- Upload an image  
+- Receive classification  
+- Allow the user to confirm or correct before inserting into the database
+
+---
+
+### 4. Planned Future ML Enhancements
+- Transformer-based model for multi-class food recognition  
+- OCR-based expiry extraction from package labels  
+- Personalised expiry estimation using historical user data  
+- Cloud-hosted model for real-time web inference
