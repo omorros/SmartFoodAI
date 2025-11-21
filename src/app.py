@@ -286,16 +286,22 @@ def cmd_recognize_image():
     if not path:
         print("Cancelled.")
         return
+
     if not os.path.isfile(path):
         print("File not found:", path)
         return
+
     try:
-        import recognizer
-        result = recognizer.recognize(path)
-        print("Recognition result:", result)
-    except ImportError:
-        print("Recognizer not implemented yet.")
-        print("Image path saved:", path)
+        from recognizer import recognize
+        result = recognize(path)
+
+        if "error" in result:
+            print("Recognition error:", result["error"])
+        else:
+            print(f"\nRecognition Result:")
+            print(f"  Class:       {result['class'].title()}")
+            print(f"  Confidence:  {result['confidence']:.4f}")
+
     except Exception as e:
         print("Error while running recognizer:", e)
 
