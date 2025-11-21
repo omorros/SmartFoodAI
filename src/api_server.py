@@ -1,3 +1,21 @@
+import sys, os
+
+# FORCE correct module root manually
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+SRC_PATH = os.path.abspath(os.path.dirname(__file__))
+
+sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, SRC_PATH)
+
+print("\n[FIXED PATHS]")
+print("Added to sys.path:", PROJECT_ROOT)
+print("Added to sys.path:", SRC_PATH)
+print()
+
+import recognizer
+print(">>> RECOGNIZER MODULE LOADED FROM:", recognizer.__file__)
+
+
 # ==============================================================
 # SMARTFOOD AI - SHELF LIFE PREDICTION API
 # ==============================================================
@@ -8,6 +26,14 @@ import numpy as np
 import joblib
 import traceback
 import os
+
+# ==============================================================
+# SMARTFOOD AI - IMAGE RECOGNITION MODULE (EfficientNetB0)
+# ==============================================================
+from fastapi import UploadFile, File
+from recognizer import recognize
+import shutil, uuid
+
 
 # ==============================================================
 # DEFINE INPUT SCHEMA (for FastAPI request body)
@@ -107,6 +133,28 @@ async def predict(input_data: InputData):
         print("ERROR in /predict:", e)
         traceback.print_exc()
         return {"error": str(e)}
+
+# ==============================================================
+# IMAGE RECOGNITION ENDPOINT (EfficientNetB0)
+# ==============================================================
+
+from fastapi import UploadFile, File
+
+@app.post("/predict-image")
+async def predict_image(file: UploadFile = File(...)):
+    try:
+        # Read file bytes
+        contents = await file.read()
+
+        # Pass to recognizer
+        result = recognize(contents)
+
+        return {"result": result}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
 
 
 
