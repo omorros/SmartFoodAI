@@ -282,39 +282,130 @@ def cmd_consume_item():
             print("Item retained in database.")
 
 def cmd_recognize_image():
-    """GUI popup image selector → send to FastAPI → print CNN prediction."""
+    """Image recognition → confirm item → ask details → call shelf-life model → save to DB."""
     try:
-        # --- Open file dialog ---
-        Tk().withdraw()  # hide empty Tk window
+        # --- GUI file picker ---
+        Tk().withdraw()
         img_path = askopenfilename(
             title="Select an image to recognize",
             filetypes=[("Image Files", "*.jpg *.jpeg *.png *.bmp *.gif")]
         )
-
         if not img_path:
             print("Cancelled.")
             return
 
         print(f"\nSelected image: {img_path}")
-        print("Sending image to SmartFoodAI recognition API...")
+        print("Sending to SmartFoodAI Image Recognition API...")
 
-        # --- Send file to FastAPI endpoint ---
+        # --- Send image to FastAPI CNN endpoint ---
         with open(img_path, "rb") as f:
             files = {"file": (os.path.basename(img_path), f, "image/jpeg")}
             response = requests.post("http://127.0.0.1:8000/predict-image", files=files)
 
         data = response.json()
 
-        print("\nRecognition result:")
-        print(data)
+        if "error" in data:
+            print("Recognition error:", data["error"])
+            return
 
-        # Optional: pretty output
-        if "result" in data:
-            print(f"\nPredicted class: {data['result']['class']}")
-            print(f"Confidence: {data['result']['confidence']:.4f}")
+        predicted_class = data["result"]["class"]
+        confidence = data["result"]["confidence"]
+
+        print("\nAI recognized the item as:")
+        print(f"  → {predicted_class}  (confidence {confidence:.3f})")
+
+        # --- Confirm recognition ---
+        use_ai = input("\nIs this correct? [Y/n]: ").strip().lower()
+        if use_ai in ("", "y", "yes"):
+            food_name = predicted_class.replace("_", " ")
+        else:
+            food_name = input("Enter correct item name: ").strip().lower()
+
+        # --- Semantic category mapping ---
+        try:
+            auto_category, score = get_closest_category(food_name)
+            print(f"\nDetected category: {auto_category} (similarity {score:.2f})")
+            use_auto_cat = input("Use this category? [Y/n]: ").strip().lower()
+            if use_auto_cat in ("", "y", "yes"):
+                category = auto_category
+            else:
+                category = input("Enter category manually: ").strip().lower()
+        except Exception as e:
+            print("Semantic mapper failed:", e)
+            category = input("Enter food category manually: ").strip().lower()
+
+        # --- Ask details like manual mode ---
+        qty = float(input("\nQuantity (e.g., 1): ") or "1")
+        unit = input("Unit (g, L, pcs): ").strip() or "pcs"
+        location = (input("Location (Fridge/Freezer/Pantry) [Fridge]: ").strip() or "Fridge").title()
+
+        # Packaging logic
+        if category in ["meat", "fish", "snack", "dairy"]:
+            packaging = input("Packaging (sealed/open) [sealed]: ").strip() or "sealed"
+        else:
+            packaging = "sealed"
+
+        # State logic
+        if category in ["meat", "fish", "dairy", "prepared food"]:
+            state = input("State (raw/cooked) [raw]: ").strip() or "raw"
+        else:
+            state = "raw"
+
+        # Temperature defaults
+        temperature = 4 if location.lower() == "fridge" else (-18 if location.lower() == "freezer" else 20)
+
+        # Purchased date
+        purchased_raw = input("\nPurchased on (YYYY-MM-DD or '3' = 3 days ago) [today]: ").strip()
+        purchased = parse_date_input(purchased_raw) or dt.date.today().isoformat()
+
+        # --- Predict shelf life using the API ---
+        print("\nCalculating shelf-life prediction...")
+
+        payload = {
+            "category": category,
+            "location": location.lower(),
+            "packaging": packaging.lower(),
+            "state": state.lower(),
+            "temperature": temperature
+        }
+
+        try:
+            resp = requests.post("http://127.0.0.1:8000/predict", json=payload)
+            model_data = resp.json()
+
+            predicted_days = model_data.get("predicted_shelf_life_days")
+
+            if predicted_days:
+                expiry_date = dt.date.today() + dt.timedelta(days=float(predicted_days))
+                expiry = expiry_date.isoformat()
+
+                print(f"\nPredicted shelf life: ~{predicted_days:.1f} days")
+                print(f"Predicted expiry date: {expiry}")
+
+                confirm = input("Is this expiry accurate? (y/n or enter custom YYYY-MM-DD): ").strip().lower()
+                if confirm == "n":
+                    expiry = input("Enter expiry date manually (YYYY-MM-DD): ").strip()
+                elif len(confirm) == 10 and "-" in confirm:
+                    expiry = confirm
+                else:
+                    print("Using predicted expiry.")
+            else:
+                print("Could not get prediction from API.")
+                expiry = None
+
+        except Exception as e:
+            print("Prediction API failed:", e)
+            expiry = None
+
+        # --- Save to DB ---
+        try:
+            iid = add_item(food_name, category, qty, unit, location, purchased, expiry, "ImageAI", None)
+            print(f"\nSaved item successfully! (ID {iid})")
+        except Exception as e:
+            print("Error saving item:", e)
 
     except Exception as e:
-        print("Error during image recognition:", e)
+        print("Error during image recognition workflow:", e)
 
 def main():
     init_db()
