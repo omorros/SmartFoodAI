@@ -49,7 +49,21 @@ class InputData(BaseModel):
 # ==============================================================
 # INITIALIZE FASTAPI APP
 # ==============================================================
+# ==============================================================
+# INITIALIZE FASTAPI APP
+# ==============================================================
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="SmartFoodAI Shelf-Life Prediction API")
+
+# --- Enable CORS ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # You can restrict later to ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ==============================================================
 # LOAD MODEL ON STARTUP
@@ -153,9 +167,6 @@ async def predict_image(file: UploadFile = File(...)):
 
     except Exception as e:
         return {"error": str(e)}
-
-
-
 
 
 # ==============================================================
