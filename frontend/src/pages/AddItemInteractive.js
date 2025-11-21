@@ -1,5 +1,9 @@
 import React, { useState } from "react";
 import { predictShelfLife } from "../api/api";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import dayjs from "dayjs";
 
 const API_BASE = "http://127.0.0.1:8000";
 
@@ -11,9 +15,10 @@ export default function AddItemInteractive() {
     location: "",
     packaging: "sealed",
     state: "raw",
-    temperature: 4,
   });
   const [prediction, setPrediction] = useState(null);
+  const [expiryDate, setExpiryDate] = useState(null);
+  const [customExpiry, setCustomExpiry] = useState(dayjs());
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -58,6 +63,11 @@ export default function AddItemInteractive() {
     try {
       const res = await predictShelfLife(payload);
       setPrediction(res);
+
+      // Calculate default predicted expiry date
+      const predictedDays = res.predicted_shelf_life_days || 0;
+      const predictedDate = dayjs().add(predictedDays, "day");
+      setExpiryDate(predictedDate);
       next("done");
     } catch (err) {
       console.error("Prediction failed:", err);
@@ -66,11 +76,9 @@ export default function AddItemInteractive() {
     }
   };
 
-  const handleSave = async () => {
-    const expiryDate = new Date();
-    expiryDate.setDate(
-      expiryDate.getDate() + (prediction?.predicted_shelf_life_days || 0)
-    );
+  const handleSave = async (useCustom = false) => {
+    const chosenDate = useCustom ? customExpiry : expiryDate;
+    if (!chosenDate) return;
 
     const item = {
       name: form.name,
@@ -79,9 +87,11 @@ export default function AddItemInteractive() {
       unit: "pcs",
       location: form.location,
       purchased_on: new Date().toISOString().split("T")[0],
-      expiry_on: expiryDate.toISOString().split("T")[0],
+      expiry_on: chosenDate.format("YYYY-MM-DD"),
       source: "WebApp",
-      notes: `Predicted shelf life: ${prediction?.predicted_shelf_life_days} days`,
+      notes: useCustom
+        ? "Custom expiry date selected by user."
+        : `Predicted shelf life: ${prediction?.predicted_shelf_life_days} days`,
     };
 
     try {
@@ -103,7 +113,7 @@ export default function AddItemInteractive() {
       {step === "name" && (
         <form onSubmit={handleNameSubmit}>
           <label>
-            What is the food name? <br />
+            What’s the food name? <br />
             <input
               type="text"
               value={form.name}
@@ -209,38 +219,50 @@ export default function AddItemInteractive() {
       )}
 
       {step === "done" && prediction && (
-        <div style={{ marginTop: "2rem" }}>
-          <div
-            style={{
-              background: "#f8f9fa",
-              borderRadius: "8px",
-              padding: "1.5rem",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-            }}
-          >
-            <h3>Prediction Summary</h3>
-            <p><b>Item:</b> {form.name}</p>
-            <p><b>Category:</b> {form.category}</p>
-            <p><b>Location:</b> {form.location}</p>
-            <p>
-              <b>Expected Shelf Life:</b>{" "}
-              {prediction.predicted_shelf_life_days.toFixed(1)} days
-            </p>
-            <p>
-              <b>Estimated Expiry Date:</b>{" "}
-              {new Date(
-                Date.now() +
-                  prediction.predicted_shelf_life_days * 24 * 60 * 60 * 1000
-              ).toLocaleDateString()}
-            </p>
-            <p><b>Status:</b> {prediction.status}</p>
+        <div
+          style={{
+            marginTop: "2rem",
+            background: "#f8f9fa",
+            borderRadius: "8px",
+            padding: "1.5rem",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+          }}
+        >
+          <h3>Prediction Summary</h3>
+          <p><b>Item:</b> {form.name}</p>
+          <p><b>Category:</b> {form.category}</p>
+          <p><b>Location:</b> {form.location}</p>
+          <p><b>Packaging:</b> {form.packaging}</p>
+          <p><b>State:</b> {form.state}</p>
+          <p>
+            <b>Expected Shelf Life:</b>{" "}
+            {prediction.predicted_shelf_life_days.toFixed(1)} days
+          </p>
 
-            {!saved ? (
-              <button onClick={handleSave}>Save to Inventory</button>
-            ) : (
-              <p style={{ color: "green" }}>Saved successfully.</p>
-            )}
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <DatePicker
+              label="Select custom expiry date"
+              value={customExpiry}
+              onChange={(newValue) => setCustomExpiry(newValue)}
+              slotProps={{ textField: { fullWidth: true } }}
+            />
+          </LocalizationProvider>
+
+          <div style={{ marginTop: "1rem" }}>
+            <button
+              onClick={() => handleSave(false)}
+              style={{ marginRight: "1rem" }}
+            >
+              Use Predicted Date
+            </button>
+            <button onClick={() => handleSave(true)}>Use Custom Date</button>
           </div>
+
+          {saved && (
+            <p style={{ color: "green", marginTop: "1rem" }}>
+              Saved successfully to inventory.
+            </p>
+          )}
         </div>
       )}
     </div>

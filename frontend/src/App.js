@@ -2,8 +2,9 @@ import React, { useState } from "react";
 import { Box, Toolbar } from "@mui/material";
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
+
 import Dashboard from "./pages/Dashboard";
-import AddItemForm from "./pages/AddItemForm";
+import AddItemInteractive from "./pages/AddItemInteractive";
 import ItemsList from "./pages/ItemsList";
 import Settings from "./pages/Settings";
 
@@ -13,7 +14,7 @@ function App() {
   const renderPage = () => {
     switch (page) {
       case "Add Item":
-        return <AddItemForm />;
+        return <AddItemInteractive />;
       case "Items List":
         return <ItemsList />;
       case "Settings":
@@ -26,9 +27,9 @@ function App() {
   return (
     <Box sx={{ display: "flex" }}>
       <Sidebar setPage={setPage} />
-      <Box component="main" sx={{ flexGrow: 1, bgcolor: "#f5f5f5", height: "100vh" }}>
-        <Topbar />
+      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
         <Toolbar />
+        <Topbar />
         {renderPage()}
       </Box>
     </Box>

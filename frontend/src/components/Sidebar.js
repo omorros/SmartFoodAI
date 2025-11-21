@@ -1,34 +1,32 @@
 import React from "react";
-import { Drawer, List, ListItem, ListItemButton, ListItemText } from "@mui/material";
+import { Drawer, List, ListItem, ListItemText, Toolbar } from "@mui/material";
 
-const Sidebar = ({ setPage }) => {
-  const pages = ["Dashboard", "Add Item", "Items List", "Settings"];
+const drawerWidth = 220;
+
+export default function Sidebar({ setPage }) {
+  const menuItems = ["Dashboard", "Add Item", "Items List", "Settings"];
 
   return (
     <Drawer
-      variant="permanent"
       sx={{
-        width: 200,
+        width: drawerWidth,
         flexShrink: 0,
         "& .MuiDrawer-paper": {
-          width: 200,
+          width: drawerWidth,
           boxSizing: "border-box",
-          backgroundColor: "#222",
-          color: "#fff",
         },
       }}
+      variant="permanent"
+      anchor="left"
     >
+      <Toolbar />
       <List>
-        {pages.map((text) => (
-          <ListItem key={text} disablePadding>
-            <ListItemButton onClick={() => setPage(text)}>
-              <ListItemText primary={text} />
-            </ListItemButton>
+        {menuItems.map((text) => (
+          <ListItem button key={text} onClick={() => setPage(text)}>
+            <ListItemText primary={text} />
           </ListItem>
         ))}
       </List>
     </Drawer>
   );
-};
-
-export default Sidebar;
+}
