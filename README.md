@@ -9,6 +9,8 @@ The project includes:
 - A backend API (FastAPI)
 - A React web interface under `/frontend`
 
+---
+
 ## Key Features
 
 ### 1. Food Inventory Management
@@ -40,35 +42,7 @@ The project includes:
 - Modern UI for interacting with the FastAPI backend  
 - Product viewing and future real-time inventory features  
 
-## Project Structure
-
-SmartFoodAI/
-│
-├── frontend/                       # React web interface
-│   ├── src/
-│   ├── public/
-│   └── package.json
-│
-├── models/
-│   ├── fruit_veg_model.h5
-│   └── label_map.json
-│
-├── recognizer/
-│   ├── recognizer.py
-│   ├── preprocess.py
-│   └── fastapi_app.py              # FastAPI inference server
-│
-├── barcode/
-│   └── barcode_reader.py
-│
-├── database/
-│   └── smartfood.db
-│
-├── db_manager.py
-├── utils.py
-├── main.py                         # Console menu
-├── requirements.txt
-└── README.md
+---
 
 ## Technology Stack
 
@@ -84,18 +58,20 @@ SmartFoodAI/
 
 ### Frontend
 - React  
-- JavaScript / TypeScript (depending on project setup)  
+- JavaScript
 - Vite development server  
 
 ### Interfaces
 - Console-based CLI  
 - Web UI (React frontend communicating with the FastAPI backend)
 
+---
+
 ## Machine Learning Models
 
 SmartFoodAI integrates two separate machine learning components that together enable automated food recognition and expiry estimation.
 
-### 1. Image Classification Model (CNN)
+### Image Classification Model (CNN)
 
 **Purpose:**  
 Identify fruits and vegetables from user images.
@@ -117,13 +93,7 @@ Identify fruits and vegetables from user images.
 - Classification confidence  
 - Used by the backend to suggest product names when adding new items
 
-**Files:**  
-- `models/fruit_veg_model.h5`  
-- `models/label_map.json`
-
----
-
-### 2. Expiry Prediction Model (Regression-Based)
+### Expiry Prediction Model (Regression-Based)
 
 **Purpose:**  
 Predict the estimated expiry date of products that do not contain a visible expiry label (e.g., fresh produce).
@@ -146,20 +116,22 @@ This module is implemented inside:
 
 ---
 
-### 3. API Integration for Model Inference
+## API Integration for Model Inference
 
-The `recognizer/fastapi_app.py` provides:
-- `/predict` endpoint for CNN inference  
-- `/health` endpoint for readiness checks
+The backend FastAPI service (in `recognizer/fastapi_app.py`) provides two main endpoints:
+
+- **POST /predict** – Uses the regression shelf-life model to estimate how many days a product will last based on category, storage location, packaging, physical state, and temperature.
+- **POST /predict-image** – Uses the EfficientNetB0 CNN model to identify fruits and vegetables from an uploaded image file.
 
 The React frontend communicates with this API to:
-- Upload an image  
-- Receive classification  
-- Allow the user to confirm or correct before inserting into the database
+- Upload an image for classification  
+- Receive the predicted class and confidence  
+- Request shelf-life predictions for products  
+- Allow the user to confirm or modify the detected item before adding it to the inventory
 
 ---
 
-### 4. Planned Future ML Enhancements
+## Planned Future ML Enhancements
 - Transformer-based model for multi-class food recognition  
 - OCR-based expiry extraction from package labels  
 - Personalised expiry estimation using historical user data  
