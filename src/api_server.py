@@ -168,6 +168,43 @@ async def predict_image(file: UploadFile = File(...)):
     except Exception as e:
         return {"error": str(e)}
 
+# ==============================================================
+# ADD ITEM ENDPOINT (used by React frontend)
+# ==============================================================
+from fastapi import Request
+from db_manager import add_item, init_db
+
+@app.post("/add_item")
+async def add_item_endpoint(request: Request):
+    """
+    Accepts JSON from frontend and saves item into SQLite database.
+    Expected fields:
+      name, category, qty, unit, location, purchased_on, expiry_on, source, notes
+    """
+    try:
+        data = await request.json()
+        print("Incoming add_item data:", data)
+
+        init_db()  # Ensure table exists
+
+        name = data.get("name")
+        category = data.get("category", "")
+        qty = float(data.get("qty", 1))
+        unit = data.get("unit", "")
+        location = data.get("location", "Fridge")
+        purchased_on = data.get("purchased_on")
+        expiry_on = data.get("expiry_on")
+        source = data.get("source", "WebApp")
+        notes = data.get("notes", "")
+
+        iid = add_item(name, category, qty, unit, location, purchased_on, expiry_on, source, notes)
+
+        return {"status": "success", "id": iid, "message": f"Item '{name}' added successfully."}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
 
 # ==============================================================
 # RUN (for local debugging)
