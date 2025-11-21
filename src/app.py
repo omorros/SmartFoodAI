@@ -282,28 +282,39 @@ def cmd_consume_item():
             print("Item retained in database.")
 
 def cmd_recognize_image():
-    path = safe_input("Path to image file (or Enter to cancel): ", allow_empty=True)
-    if not path:
-        print("Cancelled.")
-        return
-
-    if not os.path.isfile(path):
-        print("File not found:", path)
-        return
-
+    """GUI popup image selector → send to FastAPI → print CNN prediction."""
     try:
-        from recognizer import recognize
-        result = recognize(path)
+        # --- Open file dialog ---
+        Tk().withdraw()  # hide empty Tk window
+        img_path = askopenfilename(
+            title="Select an image to recognize",
+            filetypes=[("Image Files", "*.jpg *.jpeg *.png *.bmp *.gif")]
+        )
 
-        if "error" in result:
-            print("Recognition error:", result["error"])
-        else:
-            print(f"\nRecognition Result:")
-            print(f"  Class:       {result['class'].title()}")
-            print(f"  Confidence:  {result['confidence']:.4f}")
+        if not img_path:
+            print("Cancelled.")
+            return
+
+        print(f"\nSelected image: {img_path}")
+        print("Sending image to SmartFoodAI recognition API...")
+
+        # --- Send file to FastAPI endpoint ---
+        with open(img_path, "rb") as f:
+            files = {"file": (os.path.basename(img_path), f, "image/jpeg")}
+            response = requests.post("http://127.0.0.1:8000/predict-image", files=files)
+
+        data = response.json()
+
+        print("\nRecognition result:")
+        print(data)
+
+        # Optional: pretty output
+        if "result" in data:
+            print(f"\nPredicted class: {data['result']['class']}")
+            print(f"Confidence: {data['result']['confidence']:.4f}")
 
     except Exception as e:
-        print("Error while running recognizer:", e)
+        print("Error during image recognition:", e)
 
 def main():
     init_db()
