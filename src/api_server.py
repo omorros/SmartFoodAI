@@ -26,6 +26,8 @@ import numpy as np
 import joblib
 import traceback
 import os
+import datetime as dt
+
 
 # ==============================================================
 # SMARTFOOD AI - IMAGE RECOGNITION MODULE (EfficientNetB0)
@@ -172,7 +174,15 @@ async def predict_image(file: UploadFile = File(...)):
 # ADD ITEM ENDPOINT (used by React frontend)
 # ==============================================================
 from fastapi import Request
-from db_manager import add_item, init_db
+from db_manager import (
+    init_db,
+    add_item,
+    list_items,
+    get_item,
+    update_item,
+    delete_item,
+    consume_item
+)
 
 @app.post("/add_item")
 async def add_item_endpoint(request: Request):
@@ -205,62 +215,65 @@ async def add_item_endpoint(request: Request):
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
-    
+
 # ==============================================================
-# LIST ALL ITEMS
+# LIST ALL ITEMS (with days_left + expired logic)
 # ==============================================================
 @app.get("/list_items")
 def list_all_items():
-    """Return all items currently in the database."""
+    """Return all items currently in the database with days left."""
+    from datetime import datetime, date
     try:
-        items = list_items()
-        results = [
-            {
-                "id": r[0],
-                "name": r[1],
-                "qty": r[2],
-                "unit": r[3],
-                "category": r[4],
-                "location": r[5],
-                "purchased_on": r[6],
-                "expiry_on": r[7],
-            }
-            for r in items
-        ]
-        return {"status": "success", "items": results}
+        rows = list_items()
+        items = []
+        for (iid, name, qty, unit, cat, loc, pur, exp) in rows:
+            days_left = None
+            if exp:
+                try:
+                    exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+                    diff = (exp_date - date.today()).days
+                    days_left = "Expired" if diff < 0 else diff
+                except Exception:
+                    pass
+
+            items.append({
+                "id": iid,
+                "name": name,
+                "qty": qty,
+                "unit": unit,
+                "category": cat,
+                "location": loc,
+                "purchased_on": pur,
+                "expiry_on": exp,
+                "days_left": days_left
+            })
+        return {"status": "success", "items": items}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         return {"error": str(e)}
 
 
 # ==============================================================
-# LIST ITEMS BY URGENCY (EXPIRY SOONEST FIRST)
+# LIST URGENT ITEMS (expiring ≤ 3 days or expired)
 # ==============================================================
 @app.get("/list_items_urgent")
 def list_items_urgent():
-    """
-    Return all items sorted by days left until expiry (ascending),
-    where soon-to-expire items come first.
-    """
+    """Return items that are expired or expiring soon."""
+    from datetime import datetime, date
     try:
-        items = list_items()
-        today = dt.date.today()
+        rows = list_items()
+        urgent = []
+        for (iid, name, qty, unit, cat, loc, pur, exp) in rows:
+            days_left = None
+            if exp:
+                try:
+                    exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+                    diff = (exp_date - date.today()).days
+                    days_left = "Expired" if diff < 0 else diff
+                except Exception:
+                    pass
 
-        def days_left(expiry):
-            if not expiry:
-                return None
-            try:
-                exp_date = dt.datetime.strptime(expiry, "%Y-%m-%d").date()
-                return (exp_date - today).days
-            except Exception:
-                return None
-
-        annotated = []
-        for (iid, name, qty, unit, cat, loc, pur, exp) in items:
-            dleft = days_left(exp)
-            annotated.append(
-                {
+            if days_left == "Expired" or (isinstance(days_left, int) and days_left <= 3):
+                urgent.append({
                     "id": iid,
                     "name": name,
                     "qty": qty,
@@ -269,60 +282,11 @@ def list_items_urgent():
                     "location": loc,
                     "purchased_on": pur,
                     "expiry_on": exp,
-                    "days_left": dleft,
-                }
-            )
-
-        annotated.sort(key=lambda x: (x["days_left"] is None, x["days_left"] or 9999))
-        return {"status": "success", "items": annotated}
-
+                    "days_left": days_left
+                })
+        return {"status": "success", "items": urgent}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         return {"error": str(e)}
-    
-# ==============================================================
-# UPDATE ITEM ENDPOINT
-# ==============================================================
-from fastapi import HTTPException
-
-@app.put("/update_item/{item_id}")
-async def update_item_api(item_id: int, item: dict):
-    """Update item details by ID."""
-    try:
-        row = get_item(item_id)
-        if not row:
-            raise HTTPException(status_code=404, detail="Item not found")
-
-        name = item.get("name", row[1])
-        category = item.get("category", row[2])
-        qty = item.get("qty", row[3])
-        unit = item.get("unit", row[4])
-        location = item.get("location", row[5])
-        purchased_on = item.get("purchased_on", row[6])
-        expiry_on = item.get("expiry_on", row[7])
-        source = item.get("source", row[8])
-        notes = item.get("notes", row[9])
-
-        update_item(item_id, name, category, qty, unit, location, purchased_on, expiry_on, source, notes)
-        return {"status": "success", "updated_id": item_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==============================================================
-# DELETE ITEM ENDPOINT
-# ==============================================================
-@app.delete("/delete_item/{item_id}")
-async def delete_item_api(item_id: int):
-    """Delete item by ID."""
-    try:
-        ok = delete_item(item_id)
-        if not ok:
-            raise HTTPException(status_code=404, detail="Item not found or already deleted")
-        return {"status": "success", "deleted_id": item_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==============================================================
@@ -341,6 +305,130 @@ async def consume_item_api(item_id: int, req: ConsumeRequest):
         return {"status": "success", "item_id": item_id, "new_qty": new_qty}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==============================================================
+# DATABASE ENDPOINTS
+# ==============================================================
+
+from datetime import date, datetime
+
+@app.post("/add_item")
+def add_item_api(item: dict):
+    """Add new item to the database."""
+    try:
+        iid = add_item(
+            name=item.get("name"),
+            category=item.get("category"),
+            qty=item.get("qty", 1),
+            unit=item.get("unit", ""),
+            location=item.get("location", "Fridge"),
+            purchased_on=item.get("purchased_on"),
+            expiry_on=item.get("expiry_on"),
+            source=item.get("source", "API"),
+            notes=item.get("notes"),
+        )
+        return {"status": "success", "id": iid}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/list_items")
+def list_all_items():
+    """Return all items currently in the database."""
+    try:
+        rows = list_items()
+        items = []
+        for (iid, name, qty, unit, cat, loc, pur, exp) in rows:
+            days_left = None
+            if exp:
+                try:
+                    exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+                    days_left = (exp_date - date.today()).days
+                except Exception:
+                    pass
+
+            items.append({
+                "id": iid,
+                "name": name,
+                "qty": qty,
+                "unit": unit,
+                "category": cat,
+                "location": loc,
+                "purchased_on": pur,
+                "expiry_on": exp,
+                "days_left": days_left
+            })
+        return items
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/list_items_urgent")
+def list_urgent_items():
+    """Return items that are expired or expiring within 3 days."""
+    try:
+        rows = list_items()
+        urgent = []
+        for (iid, name, qty, unit, cat, loc, pur, exp) in rows:
+            days_left = None
+            if exp:
+                try:
+                    exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+                    days_left = (exp_date - date.today()).days
+                except Exception:
+                    pass
+            if days_left is not None and days_left <= 3:
+                urgent.append({
+                    "id": iid,
+                    "name": name,
+                    "qty": qty,
+                    "unit": unit,
+                    "category": cat,
+                    "location": loc,
+                    "purchased_on": pur,
+                    "expiry_on": exp,
+                    "days_left": days_left
+                })
+        return urgent
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.put("/update_item/{item_id}")
+def update_item_api(item_id: int, item: dict):
+    """Edit item by ID."""
+    try:
+        update_item(
+            item_id=item_id,
+            name=item.get("name"),
+            category=item.get("category"),
+            qty=item.get("qty"),
+            unit=item.get("unit"),
+            location=item.get("location"),
+            purchased_on=item.get("purchased_on"),
+            expiry_on=item.get("expiry_on"),
+            source=item.get("source"),
+            notes=item.get("notes")
+        )
+        return {"status": "updated"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.delete("/delete_item/{item_id}")
+def delete_item_api(item_id: int):
+    """Delete an item by ID."""
+    try:
+        delete_item(item_id)
+        return {"status": "deleted"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/consume_item/{item_id}")
+def consume_item_api(item_id: int, payload: dict):
+    """Consume a specified amount from an item."""
+    try:
+        amount = payload.get("amount", 1)
+        ok, new_qty = consume_item(item_id, amount)
+        return {"status": "success", "new_qty": new_qty} if ok else {"error": "failed"}
+    except Exception as e:
+        return {"error": str(e)}
 
 # ==============================================================
 # RUN (for local debugging)
