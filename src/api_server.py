@@ -280,6 +280,67 @@ def list_items_urgent():
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
+    
+# ==============================================================
+# UPDATE ITEM ENDPOINT
+# ==============================================================
+from fastapi import HTTPException
+
+@app.put("/update_item/{item_id}")
+async def update_item_api(item_id: int, item: dict):
+    """Update item details by ID."""
+    try:
+        row = get_item(item_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        name = item.get("name", row[1])
+        category = item.get("category", row[2])
+        qty = item.get("qty", row[3])
+        unit = item.get("unit", row[4])
+        location = item.get("location", row[5])
+        purchased_on = item.get("purchased_on", row[6])
+        expiry_on = item.get("expiry_on", row[7])
+        source = item.get("source", row[8])
+        notes = item.get("notes", row[9])
+
+        update_item(item_id, name, category, qty, unit, location, purchased_on, expiry_on, source, notes)
+        return {"status": "success", "updated_id": item_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==============================================================
+# DELETE ITEM ENDPOINT
+# ==============================================================
+@app.delete("/delete_item/{item_id}")
+async def delete_item_api(item_id: int):
+    """Delete item by ID."""
+    try:
+        ok = delete_item(item_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Item not found or already deleted")
+        return {"status": "success", "deleted_id": item_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==============================================================
+# CONSUME ITEM ENDPOINT
+# ==============================================================
+class ConsumeRequest(BaseModel):
+    amount: float
+
+@app.post("/consume_item/{item_id}")
+async def consume_item_api(item_id: int, req: ConsumeRequest):
+    """Reduce quantity of an item."""
+    try:
+        ok, new_qty = consume_item(item_id, req.amount)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return {"status": "success", "item_id": item_id, "new_qty": new_qty}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==============================================================
 # RUN (for local debugging)
