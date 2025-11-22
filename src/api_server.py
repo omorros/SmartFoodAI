@@ -205,6 +205,81 @@ async def add_item_endpoint(request: Request):
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
+    
+# ==============================================================
+# LIST ALL ITEMS
+# ==============================================================
+@app.get("/list_items")
+def list_all_items():
+    """Return all items currently in the database."""
+    try:
+        items = list_items()
+        results = [
+            {
+                "id": r[0],
+                "name": r[1],
+                "qty": r[2],
+                "unit": r[3],
+                "category": r[4],
+                "location": r[5],
+                "purchased_on": r[6],
+                "expiry_on": r[7],
+            }
+            for r in items
+        ]
+        return {"status": "success", "items": results}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+
+# ==============================================================
+# LIST ITEMS BY URGENCY (EXPIRY SOONEST FIRST)
+# ==============================================================
+@app.get("/list_items_urgent")
+def list_items_urgent():
+    """
+    Return all items sorted by days left until expiry (ascending),
+    where soon-to-expire items come first.
+    """
+    try:
+        items = list_items()
+        today = dt.date.today()
+
+        def days_left(expiry):
+            if not expiry:
+                return None
+            try:
+                exp_date = dt.datetime.strptime(expiry, "%Y-%m-%d").date()
+                return (exp_date - today).days
+            except Exception:
+                return None
+
+        annotated = []
+        for (iid, name, qty, unit, cat, loc, pur, exp) in items:
+            dleft = days_left(exp)
+            annotated.append(
+                {
+                    "id": iid,
+                    "name": name,
+                    "qty": qty,
+                    "unit": unit,
+                    "category": cat,
+                    "location": loc,
+                    "purchased_on": pur,
+                    "expiry_on": exp,
+                    "days_left": dleft,
+                }
+            )
+
+        annotated.sort(key=lambda x: (x["days_left"] is None, x["days_left"] or 9999))
+        return {"status": "success", "items": annotated}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
 
 # ==============================================================
 # RUN (for local debugging)
