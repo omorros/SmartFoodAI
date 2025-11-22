@@ -5,7 +5,6 @@ export default function Sidebar({ active, setActive }) {
   const menuItems = [
     { name: "Add Item", path: "/" },
     { name: "View Items", path: "/items" },
-    { name: "View Urgent Items", path: "/urgent" },
     { name: "Settings", path: "/settings" },
   ];
 

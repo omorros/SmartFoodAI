@@ -21,6 +21,7 @@ export default function ItemsList() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editItem, setEditItem] = useState(null);
+  const [sortUrgent, setSortUrgent] = useState(false); // toggle for sorting
 
   // Fetch all items from FastAPI
   const fetchItems = async () => {
@@ -29,7 +30,6 @@ export default function ItemsList() {
       const res = await fetch(`${API_BASE}/list_items`);
       const data = await res.json();
 
-      // Ensure correct structure
       const itemsArray = Array.isArray(data) ? data : data.items || [];
       setItems(itemsArray);
     } catch (err) {
@@ -98,6 +98,14 @@ export default function ItemsList() {
     return "#4caf50"; // green
   };
 
+  // --- Sorting logic
+  const sortedItems = [...items].sort((a, b) => {
+    if (!sortUrgent) return 0; // no sorting
+    const getPriority = (d) =>
+      d === "Expired" ? -9999 : d === null ? 9999 : d;
+    return getPriority(a.days_left) - getPriority(b.days_left);
+  });
+
   if (loading)
     return (
       <Box sx={{ display: "flex", justifyContent: "center", mt: 5 }}>
@@ -107,12 +115,18 @@ export default function ItemsList() {
 
   return (
     <Box sx={{ p: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        Inventory Items
-      </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+        <Typography variant="h4">Inventory Items</Typography>
+        <Button
+          variant={sortUrgent ? "contained" : "outlined"}
+          onClick={() => setSortUrgent(!sortUrgent)}
+        >
+          {sortUrgent ? "Show Default Order" : "Sort by Urgency"}
+        </Button>
+      </Box>
 
       <Grid container spacing={3}>
-        {items.map((item) => (
+        {sortedItems.map((item) => (
           <Grid item xs={12} sm={6} md={4} key={item.id}>
             <Card
               variant="outlined"
@@ -133,8 +147,6 @@ export default function ItemsList() {
                 <Typography>
                   <b>Expiry:</b> {item.expiry_on || "—"}
                 </Typography>
-
-                {/* Updated Days Left Display */}
                 <Typography>
                   <b>Days Left:</b>{" "}
                   <span style={{ color: getUrgencyColor(item.days_left) }}>
@@ -146,7 +158,6 @@ export default function ItemsList() {
                   </span>
                 </Typography>
               </CardContent>
-
               <CardActions>
                 <Button size="small" onClick={() => setEditItem(item)}>
                   Edit
